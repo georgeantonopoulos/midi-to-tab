@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MIDI to Guitar Tab with Player</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/tone@14.7.77/build/Tone.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .tab-display-container {
+            position: relative;
+        }
+        .tab-display {
+            font-family: 'monospace';
+            white-space: pre;
+            overflow-x: auto;
+            line-height: 1.6;
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+        .tab-display::-webkit-scrollbar {
+            display: none; /* Chrome, Safari and Opera */
+        }
+        #playhead {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 3px; /* Made thicker */
+            background-color: #f87171; /* red-400, brighter */
+            transform: translateX(0px);
+            z-index: 10;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-4xl bg-gray-800 rounded-xl shadow-lg p-6 md:p-8">
+        <header class="text-center mb-6">
+            <h1 class="text-3xl md:text-4xl font-bold text-white">MIDI to Guitar Tab</h1>
+            <p class="text-gray-400 mt-2">Upload a MIDI file, see the tab, and hear it play.</p>
+        </header>
+
+        <main>
+            <div class="bg-gray-700/50 rounded-lg p-6 mb-6 border border-gray-600">
+                <label for="midi-file" class="block mb-4 text-lg font-medium text-center text-gray-200">
+                    Upload your MIDI file
+                </label>
+                <div class="flex justify-center">
+                    <!-- FIX: Added MIME types for better compatibility -->
+                    <input type="file" id="midi-file" accept=".mid,.midi,audio/midi,audio/x-midi" class="block w-full max-w-xs text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer"/>
+                </div>
+            </div>
+
+            <div id="player-controls" class="flex justify-center items-center space-x-4 mb-4 hidden">
+                <button id="play-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-full transition-colors duration-200">
+                    Play
+                </button>
+                <button id="stop-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-full transition-colors duration-200">
+                    Stop
+                </button>
+            </div>
+
+            <div id="tab-output" class="hidden">
+                <h2 class="text-2xl font-semibold mb-4 text-center">Generated Tablature</h2>
+                <div id="tab-display-container" class="tab-display-container bg-gray-900 p-4 rounded-md">
+                     <div id="playhead" class="hidden"></div>
+                     <div id="tab-display" class="tab-display"></div>
+                </div>
+            </div>
+            
+            <div id="message-box" class="hidden text-center mt-4 p-3 rounded-md"></div>
+
+        </main>
+    </div>
+
+    <script>
+        // DOM Elements
+        const fileInput = document.getElementById('midi-file');
+        const tabOutput = document.getElementById('tab-output');
+        const tabDisplay = document.getElementById('tab-display');
+        const messageBox = document.getElementById('message-box');
+        const playerControls = document.getElementById('player-controls');
+        const playBtn = document.getElementById('play-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const playhead = document.getElementById('playhead');
+        const tabDisplayContainer = document.getElementById('tab-display-container');
+
+        // App State
+        let currentMidi = null;
+        let synth = null;
+        let currentPart = null; // To hold the Tone.Part object
+        let isPlaying = false;
+        const GUITAR_TUNING = [40, 45, 50, 55, 59, 64]; // E2, A2, D3, G3, B3, E4
+        const TAB_CHAR_WIDTH_ESTIMATE = 9.6; 
+        const TAB_LEFT_PADDING = 2; // "e|"
+
+        // --- Event Listeners ---
+
+        fileInput.addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            resetState();
+            showMessage('Processing MIDI file...', 'info');
+
+            try {
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    try {
+                        currentMidi = new Midi(e.target.result);
+                        setupPlayer(currentMidi);
+                        const tab = generateTab(currentMidi);
+                        
+                        if (tab.trim() === getEmptyTab().trim()) {
+                           showMessage('Could not find any playable notes in the MIDI file.', 'error');
+                        } else {
+                            tabDisplay.textContent = tab;
+                            tabOutput.classList.remove('hidden');
+                            playerControls.classList.remove('hidden');
+                            showMessage('Tab generated successfully! Ready to play.', 'success');
+                        }
+                    } catch (error) {
+                        console.error("Error parsing MIDI file:", error);
+                        showMessage('Could not parse the MIDI file. Please try a different file.', 'error');
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            } catch (error) {
+                 console.error("Error reading file:", error);
+                 showMessage('An error occurred while reading the file.', 'error');
+            }
+        });
+
+        playBtn.addEventListener('click', async () => {
+            if (!currentMidi) return;
+
+            if (Tone.context.state !== 'running') {
+                await Tone.start();
+            }
+
+            if (isPlaying) {
+                Tone.Transport.pause();
+                isPlaying = false;
+                playBtn.textContent = 'Play';
+                playBtn.classList.replace('bg-yellow-600', 'bg-green-600');
+                playBtn.classList.replace('hover:bg-yellow-700', 'hover:bg-green-700');
+            } else {
+                Tone.Transport.start();
+                isPlaying = true;
+                playBtn.textContent = 'Pause';
+                playBtn.classList.replace('bg-green-600', 'bg-yellow-600');
+                playBtn.classList.replace('hover:bg-green-700', 'hover:bg-yellow-700');
+                playhead.classList.remove('hidden');
+                requestAnimationFrame(animatePlayhead);
+            }
+        });
+
+        stopBtn.addEventListener('click', () => {
+            if (currentMidi) {
+                Tone.Transport.stop();
+            }
+        });
+        
+        // --- Core Functions ---
+
+        function resetState() {
+            if (isPlaying) {
+                Tone.Transport.stop();
+            }
+            Tone.Transport.cancel(0);
+            Tone.Transport.position = 0;
+            if(synth) {
+                synth.dispose();
+                synth = null;
+            }
+            // Dispose of the old part if it exists
+            if (currentPart) {
+                currentPart.dispose();
+                currentPart = null;
+            }
+            
+            isPlaying = false;
+            currentMidi = null;
+            tabOutput.classList.add('hidden');
+            playerControls.classList.add('hidden');
+            playBtn.textContent = 'Play';
+            playBtn.classList.replace('bg-yellow-600', 'bg-green-600');
+            playBtn.classList.replace('hover:bg-yellow-700', 'hover:bg-green-700');
+            playhead.classList.add('hidden');
+            playhead.style.transform = `translateX(0px)`;
+        }
+
+        function showMessage(message, type = 'info') {
+            messageBox.textContent = message;
+            messageBox.className = 'text-center mt-4 p-3 rounded-md';
+            switch (type) {
+                case 'success': messageBox.classList.add('bg-green-600/50'); break;
+                case 'error': messageBox.classList.add('bg-red-600/50'); break;
+                default: messageBox.classList.add('bg-blue-600/50'); break;
+            }
+        }
+
+        // --- REWORKED PLAYER SETUP ---
+        function setupPlayer(midi) {
+            synth = new Tone.PolySynth(Tone.Synth, {
+                envelope: { attack: 0.01, decay: 0.4, sustain: 0.2, release: 1.4 }
+            }).toDestination();
+
+            const notes = [];
+            midi.tracks.forEach(track => {
+                if (track.channel !== 9) {
+                    track.notes.forEach(note => {
+                        notes.push({
+                            time: note.time,
+                            name: note.name,
+                            duration: note.duration,
+                            velocity: note.velocity
+                        });
+                    });
+                }
+            });
+
+            // Create a Tone.Part to schedule all notes
+            currentPart = new Tone.Part((time, value) => {
+                synth.triggerAttackRelease(value.name, value.duration, time, value.velocity);
+            }, notes).start(0);
+            
+            Tone.Transport.on('stop', () => {
+                 isPlaying = false;
+                 playBtn.textContent = 'Play';
+                 playBtn.classList.replace('bg-yellow-600', 'bg-green-600');
+                 playBtn.classList.replace('hover:bg-yellow-700', 'hover:bg-green-700');
+                 playhead.style.transform = `translateX(0px)`;
+                 tabDisplay.scrollLeft = 0;
+            });
+        }
+
+        function animatePlayhead() {
+            if (!isPlaying) {
+                playhead.classList.add('hidden');
+                return;
+            }
+            
+            const timeStep = 0.125;
+            const charsPerStep = 3;
+            const pixelsPerSecond = (charsPerStep * TAB_CHAR_WIDTH_ESTIMATE) / timeStep;
+            const initialOffset = TAB_LEFT_PADDING * TAB_CHAR_WIDTH_ESTIMATE;
+            const currentPosition = (Tone.Transport.seconds * pixelsPerSecond) + initialOffset;
+            
+            playhead.style.transform = `translateX(${currentPosition}px)`;
+            
+            const containerWidth = tabDisplayContainer.clientWidth;
+            if (currentPosition > (tabDisplay.scrollLeft + containerWidth * 0.75)) {
+                tabDisplay.scrollLeft = currentPosition - containerWidth * 0.25;
+            }
+
+            requestAnimationFrame(animatePlayhead);
+        }
+
+        function getEmptyTab() {
+            const line = '-'.repeat(60);
+            return `e|${line}|\nB|${line}|\nG|${line}|\nD|${line}|\nA|${line}|\nE|${line}|\n`;
+        }
+        
+        // --- REFINED TAB GENERATION LOGIC ---
+
+        function findBestFret(midiNote, lastNoteContext) {
+            const candidates = [];
+            for (let i = 0; i < GUITAR_TUNING.length; i++) {
+                const openNote = GUITAR_TUNING[i];
+                if (midiNote >= openNote) {
+                    const fret = midiNote - openNote;
+                    if (fret <= 12) { // Strict 12-fret limit
+                        candidates.push({ string: i, fret: fret });
+                    }
+                }
+            }
+
+            if (candidates.length === 0) return null;
+
+            if (!lastNoteContext) {
+                return candidates.reduce((prev, curr) => (prev.fret < curr.fret ? prev : curr));
+            }
+
+            let minCost = Infinity;
+            let bestCandidate = candidates[candidates.length -1];
+
+            for (const candidate of candidates) {
+                let cost = 0;
+                const fretDist = Math.abs(candidate.fret - lastNoteContext.fret);
+                const stringDist = Math.abs(candidate.string - lastNoteContext.string);
+
+                cost += fretDist * 2.5;
+                cost += stringDist * 1.5;
+                
+                if (lastNoteContext.fret > 0) {
+                    const position = Math.max(1, lastNoteContext.fret - 1);
+                    if (candidate.fret > 0 && (candidate.fret < position || candidate.fret > position + 5)) {
+                        cost += 7;
+                    }
+                }
+
+                if (candidate.fret === 0) cost -= 5;
+
+                if (cost < minCost) {
+                    minCost = cost;
+                    bestCandidate = candidate;
+                }
+            }
+            return bestCandidate;
+        }
+
+        function generateTab(midi) {
+            let notes = [];
+            midi.tracks.forEach(track => {
+                if (track.channel !== 9) {
+                    notes.push(...track.notes);
+                }
+            });
+
+            if(notes.length === 0) return getEmptyTab();
+            notes.sort((a, b) => a.time - b.time);
+
+            const tabData = [];
+            let lastNoteContext = null;
+
+            for (const note of notes) {
+                const bestPosition = findBestFret(note.midi, lastNoteContext);
+                if (bestPosition) {
+                    tabData.push({ ...bestPosition, time: note.time });
+                    if (bestPosition.fret > 0) {
+                        lastNoteContext = bestPosition;
+                    }
+                }
+            }
+            
+            return formatTab(tabData);
+        }
+
+        function formatTab(tabData) {
+            if (!tabData.length) return getEmptyTab();
+
+            const stringNames = ['E', 'A', 'D', 'G', 'B', 'e'];
+            let tabLines = stringNames.map(name => `${name}|`);
+            const timeStep = 0.125;
+            const maxTime = currentMidi.duration;
+
+            for (let t = 0; t <= maxTime + timeStep; t += timeStep) {
+                const notesAtThisTime = tabData.filter(note => note.time >= t && note.time < t + timeStep);
+                let fretsForStrings = Array(6).fill(null);
+                
+                if (notesAtThisTime.length > 0) {
+                    notesAtThisTime.forEach(note => {
+                        if (fretsForStrings[note.string] === null) {
+                            fretsForStrings[note.string] = note.fret;
+                        }
+                    });
+
+                    for (let i = 0; i < 6; i++) {
+                        const stringIndex = 5 - i;
+                        const fret = fretsForStrings[stringIndex];
+                        if (fret !== null) {
+                            tabLines[i] += `${fret}`;
+                            tabLines[i] += (fret >= 10) ? '-' : '--';
+                        } else {
+                            tabLines[i] += '---';
+                        }
+                    }
+                } else {
+                    tabLines.forEach((line) => line += '---');
+                }
+            }
+            
+            return tabLines.join('\n');
+        }
+
+    </script>
+</body>
+</html>
