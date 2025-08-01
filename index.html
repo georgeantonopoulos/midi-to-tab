@@ -95,8 +95,10 @@
         let synth = null;
         let currentPart = null; // To hold the Tone.Part object
         let isPlaying = false;
+        let timeToPositionMap = new Map(); // Maps time to pixel position
+        let actualCharWidth = 0; // Measured character width
+        let dynamicTimeStep = 0.125; // Will be calculated from MIDI tempo
         const GUITAR_TUNING = [40, 45, 50, 55, 59, 64]; // E2, A2, D3, G3, B3, E4
-        const TAB_CHAR_WIDTH_ESTIMATE = 9.6; 
         const TAB_LEFT_PADDING = 2; // "e|"
 
         // --- Event Listeners ---
@@ -113,6 +115,13 @@
                 reader.onload = async (e) => {
                     try {
                         currentMidi = new Midi(e.target.result);
+                        
+                        // Calculate dynamic timeStep from MIDI's actual tempo
+                        const tempoEvents = currentMidi.header.tempos;
+                        const bpm = (tempoEvents.length ? tempoEvents[0].bpm : 120);
+                        const secondsPerBeat = 60 / bpm;
+                        dynamicTimeStep = secondsPerBeat / 4; // 16th-note slices
+                        
                         setupPlayer(currentMidi);
                         const tab = generateTab(currentMidi);
                         
@@ -122,6 +131,9 @@
                             tabDisplay.textContent = tab;
                             tabOutput.classList.remove('hidden');
                             playerControls.classList.remove('hidden');
+                            // Measure character width AFTER tab is displayed
+                            measureCharacterWidth();
+                            createPositionMapping();
                             showMessage('Tab generated successfully! Ready to play.', 'success');
                         }
                     } catch (error) {
@@ -156,6 +168,8 @@
                 playBtn.classList.replace('bg-green-600', 'bg-yellow-600');
                 playBtn.classList.replace('hover:bg-green-700', 'hover:bg-yellow-700');
                 playhead.classList.remove('hidden');
+                // Reset playhead to start position
+                playhead.style.transform = `translateX(${TAB_LEFT_PADDING * actualCharWidth}px)`;
                 requestAnimationFrame(animatePlayhead);
             }
         });
@@ -186,13 +200,17 @@
             
             isPlaying = false;
             currentMidi = null;
+            timeToPositionMap.clear();
+            actualCharWidth = 0;
+            dynamicTimeStep = 0.125;
+            window.tabTimeSteps = [];
             tabOutput.classList.add('hidden');
             playerControls.classList.add('hidden');
             playBtn.textContent = 'Play';
             playBtn.classList.replace('bg-yellow-600', 'bg-green-600');
             playBtn.classList.replace('hover:bg-yellow-700', 'hover:bg-green-700');
             playhead.classList.add('hidden');
-            playhead.style.transform = `translateX(0px)`;
+            playhead.style.transform = `translateX(${TAB_LEFT_PADDING * (actualCharWidth || 10)}px)`;
         }
 
         function showMessage(message, type = 'info') {
@@ -202,6 +220,35 @@
                 case 'success': messageBox.classList.add('bg-green-600/50'); break;
                 case 'error': messageBox.classList.add('bg-red-600/50'); break;
                 default: messageBox.classList.add('bg-blue-600/50'); break;
+            }
+        }
+
+        function measureCharacterWidth() {
+            // Create a hidden element to get a true monospace width
+            const el = document.createElement('div');
+            el.style.fontFamily   = 'monospace';
+            el.style.fontSize     = getComputedStyle(tabDisplay).fontSize;
+            el.style.visibility   = 'hidden';
+            el.style.position     = 'absolute';
+            el.style.whiteSpace   = 'pre';
+            el.textContent        = '-'.repeat(10);
+            document.body.appendChild(el);
+
+            actualCharWidth = el.getBoundingClientRect().width / 10;
+
+            document.body.removeChild(el);
+            
+            console.log('Measured character width:', actualCharWidth);
+        }
+        
+        function createPositionMapping() {
+            timeToPositionMap.clear();
+            
+            if (window.tabTimeSteps && actualCharWidth > 0) {
+                window.tabTimeSteps.forEach(step => {
+                    const pixelPosition = step.charPosition * actualCharWidth;
+                    timeToPositionMap.set(step.time, pixelPosition);
+                });
             }
         }
 
@@ -235,7 +282,8 @@
                  playBtn.textContent = 'Play';
                  playBtn.classList.replace('bg-yellow-600', 'bg-green-600');
                  playBtn.classList.replace('hover:bg-yellow-700', 'hover:bg-green-700');
-                 playhead.style.transform = `translateX(0px)`;
+                 playhead.classList.add('hidden');
+                 playhead.style.transform = `translateX(${TAB_LEFT_PADDING * actualCharWidth}px)`;
                  tabDisplay.scrollLeft = 0;
             });
         }
@@ -246,18 +294,28 @@
                 return;
             }
             
-            const timeStep = 0.125;
-            const charsPerStep = 3;
-            const pixelsPerSecond = (charsPerStep * TAB_CHAR_WIDTH_ESTIMATE) / timeStep;
-            const initialOffset = TAB_LEFT_PADDING * TAB_CHAR_WIDTH_ESTIMATE;
-            const currentPosition = (Tone.Transport.seconds * pixelsPerSecond) + initialOffset;
+            const currentTime = Tone.Transport.seconds;
             
-            playhead.style.transform = `translateX(${currentPosition}px)`;
+            // Find the last step ≤ currentTime using the actual time→pixel map
+            const times = Array.from(timeToPositionMap.keys()).sort((a,b)=>a-b);
+            let stepTime = times.filter(time => time <= currentTime).pop() ?? 0;
+            const absolutePosition = timeToPositionMap.get(stepTime) ?? (TAB_LEFT_PADDING * actualCharWidth);
             
+            // Auto-scroll to keep playhead in view
             const containerWidth = tabDisplayContainer.clientWidth;
-            if (currentPosition > (tabDisplay.scrollLeft + containerWidth * 0.75)) {
-                tabDisplay.scrollLeft = currentPosition - containerWidth * 0.25;
+            if (absolutePosition > (tabDisplay.scrollLeft + containerWidth * 0.75)) {
+                tabDisplay.scrollLeft = absolutePosition - containerWidth * 0.25;
             }
+            
+            // Calculate playhead position relative to the current scroll position
+            const relativePosition = absolutePosition - tabDisplay.scrollLeft;
+            
+            // Debug logging
+            if (Math.floor(currentTime * 4) % 4 === 0) {
+                console.log(`Time: ${currentTime.toFixed(2)}s, StepTime: ${stepTime.toFixed(3)}s, Absolute: ${absolutePosition.toFixed(1)}px, Relative: ${relativePosition.toFixed(1)}px`);
+            }
+            
+            playhead.style.transform = `translateX(${relativePosition}px)`;
 
             requestAnimationFrame(animatePlayhead);
         }
@@ -347,12 +405,26 @@
 
             const stringNames = ['E', 'A', 'D', 'G', 'B', 'e'];
             let tabLines = stringNames.map(name => `${name}|`);
-            const timeStep = 0.125;
+            const timeStep = dynamicTimeStep;
             const maxTime = currentMidi.duration;
+            
+            // Find when the first note actually starts
+            const firstNoteTime = tabData.length > 0 ? Math.min(...tabData.map(note => note.time)) : 0;
+            console.log(`First note starts at: ${firstNoteTime.toFixed(3)}s, MIDI duration: ${maxTime.toFixed(3)}s`);
+            
+            // Store time step data for later position mapping
+            window.tabTimeSteps = [];
+            let currentCharPosition = TAB_LEFT_PADDING; // Start after "e|"
 
-            for (let t = 0; t <= maxTime + timeStep; t += timeStep) {
+            for (let t = firstNoteTime; t <= maxTime + timeStep; t += timeStep) {
                 const notesAtThisTime = tabData.filter(note => note.time >= t && note.time < t + timeStep);
                 let fretsForStrings = Array(6).fill(null);
+                
+                // Store this time step info
+                window.tabTimeSteps.push({
+                    time: t,
+                    charPosition: currentCharPosition
+                });
                 
                 if (notesAtThisTime.length > 0) {
                     notesAtThisTime.forEach(note => {
@@ -365,15 +437,21 @@
                         const stringIndex = 5 - i;
                         const fret = fretsForStrings[stringIndex];
                         if (fret !== null) {
-                            tabLines[i] += `${fret}`;
-                            tabLines[i] += (fret >= 10) ? '-' : '--';
+                            const fretStr = fret.toString();
+                            tabLines[i] += fretStr;
+                            // Add dashes to pad to consistent width (3 chars total)
+                            tabLines[i] += '-'.repeat(3 - fretStr.length);
                         } else {
                             tabLines[i] += '---';
                         }
                     }
                 } else {
-                    tabLines.forEach((line) => line += '---');
+                    tabLines.forEach((line, i) => {
+                        tabLines[i] += '---';
+                    });
                 }
+                
+                currentCharPosition += 3; // Always 3 characters per time step
             }
             
             return tabLines.join('\n');

@@ -1,0 +1,23 @@
+{
+  "name": "midi-to-tab",
+  "version": "1.0.0",
+  "main": "inspect-midi.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/georgeantonopoulos/midi-to-tab.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/georgeantonopoulos/midi-to-tab/issues"
+  },
+  "homepage": "https://github.com/georgeantonopoulos/midi-to-tab#readme",
+  "description": "",
+  "dependencies": {
+    "@tonejs/midi": "^2.0.28"
+  }
+}
