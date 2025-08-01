@@ -3,11 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MIDI to Guitar Tab with Player</title>
+    <title>MIDI to Guitar Tab with Professional Player</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Keep Tone.js for now as fallback -->
     <script src="https://cdn.jsdelivr.net/npm/tone@14.7.77/build/Tone.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi"></script>
+    
+    <!-- Add SpessaSynth for professional SoundFont synthesis -->
+    <script src="https://cdn.jsdelivr.net/npm/spessasynth@3.12.0/dist/spessasynth.min.js"></script>
+    
+    <!-- Add AlphaTab for professional tab rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@latest/dist/alphaTab.min.js"></script>
+    
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -30,19 +38,43 @@
             position: absolute;
             top: 0;
             bottom: 0;
-            width: 3px; /* Made thicker */
-            background-color: #f87171; /* red-400, brighter */
+            width: 3px;
+            background-color: #f87171;
             transform: translateX(0px);
             z-index: 10;
+        }
+        
+        /* AlphaTab styling */
+        .alphaTab-container {
+            background: #1a1a1a;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        /* Loading spinner */
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 2s linear infinite;
+            margin: 20px auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
 
-    <div class="w-full max-w-4xl bg-gray-800 rounded-xl shadow-lg p-6 md:p-8">
+    <div class="w-full max-w-6xl bg-gray-800 rounded-xl shadow-lg p-6 md:p-8">
         <header class="text-center mb-6">
-            <h1 class="text-3xl md:text-4xl font-bold text-white">MIDI to Guitar Tab</h1>
-            <p class="text-gray-400 mt-2">Upload a MIDI file, see the tab, and hear it play.</p>
+            <h1 class="text-3xl md:text-4xl font-bold text-white">Professional MIDI to Guitar Tab</h1>
+            <p class="text-gray-400 mt-2">Upload a MIDI file, see professional tablature, and hear high-quality playback.</p>
         </header>
 
         <main>
@@ -51,11 +83,11 @@
                     Upload your MIDI file
                 </label>
                 <div class="flex justify-center">
-                    <!-- FIX: Added MIME types for better compatibility -->
                     <input type="file" id="midi-file" accept=".mid,.midi,audio/midi,audio/x-midi" class="block w-full max-w-xs text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer"/>
                 </div>
             </div>
 
+            <!-- Professional Player Controls -->
             <div id="player-controls" class="flex justify-center items-center space-x-4 mb-4 hidden">
                 <button id="play-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-full transition-colors duration-200">
                     Play
@@ -63,14 +95,46 @@
                 <button id="stop-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-full transition-colors duration-200">
                     Stop
                 </button>
+                <button id="pause-btn" class="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-6 rounded-full transition-colors duration-200">
+                    Pause
+                </button>
+                <div class="flex items-center space-x-2">
+                    <label class="text-gray-300">Volume:</label>
+                    <input type="range" id="volume-slider" min="0" max="100" value="70" class="w-24">
+                </div>
             </div>
 
+            <!-- Professional Tab Display -->
             <div id="tab-output" class="hidden">
-                <h2 class="text-2xl font-semibold mb-4 text-center">Generated Tablature</h2>
-                <div id="tab-display-container" class="tab-display-container bg-gray-900 p-4 rounded-md">
+                <h2 class="text-2xl font-semibold mb-4 text-center">Professional Tablature</h2>
+                
+                <!-- AlphaTab Professional Rendering -->
+                <div id="alphaTab-container" class="alphaTab-container hidden">
+                    <div id="alphaTab" data-tex="true"></div>
+                </div>
+                
+                <!-- Legacy ASCII Tab (fallback) -->
+                <div id="legacy-tab-container" class="tab-display-container bg-gray-900 p-4 rounded-md hidden">
                      <div id="playhead" class="hidden"></div>
                      <div id="tab-display" class="tab-display"></div>
                 </div>
+                
+                <!-- Loading indicator -->
+                <div id="loading-indicator" class="hidden">
+                    <div class="spinner"></div>
+                    <p class="text-center text-gray-400">Loading professional tablature...</p>
+                </div>
+            </div>
+            
+            <!-- SoundFont Selection -->
+            <div id="soundfont-controls" class="hidden mt-4">
+                <label class="block text-sm font-medium text-gray-300 mb-2">SoundFont:</label>
+                <select id="soundfont-select" class="bg-gray-700 text-white rounded px-3 py-2">
+                    <option value="default">Default Guitar</option>
+                    <option value="acoustic">Acoustic Guitar</option>
+                    <option value="electric">Electric Guitar</option>
+                    <option value="nylon">Nylon Guitar</option>
+                </select>
             </div>
             
             <div id="message-box" class="hidden text-center mt-4 p-3 rounded-md"></div>
@@ -92,7 +156,9 @@
 
         // App State
         let currentMidi = null;
-        let synth = null;
+        let synth = null; // Will now be SpessaSynth instance
+        let spessaSynth = null; // SpessaSynth synthesizer
+        let audioContext = null;
         let currentPart = null; // To hold the Tone.Part object
         let isPlaying = false;
         let timeToPositionMap = new Map(); // Maps time to pixel position
@@ -100,6 +166,278 @@
         let dynamicTimeStep = 0.125; // Will be calculated from MIDI tempo
         const GUITAR_TUNING = [40, 45, 50, 55, 59, 64]; // E2, A2, D3, G3, B3, E4
         const TAB_LEFT_PADDING = 2; // "e|"
+        
+        // Modern synthesis state
+        let useSpessaSynth = true; // Flag to use modern synthesis
+        let soundFontLoaded = false;
+        
+        // AlphaTab state
+        let alphaTabApi = null;
+        let useAlphaTab = true; // Flag to use professional rendering
+        let alphaTabInitialized = false;
+
+        // --- Modern Synthesis Functions ---
+        
+        async function initializeSpessaSynth() {
+            try {
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                
+                if (audioContext.state === 'suspended') {
+                    await audioContext.resume();
+                }
+                
+                // Load a default guitar SoundFont (using a CDN or local file)
+                const soundFontUrl = 'https://github.com/spessasus/SpessaSynth/raw/master/soundfonts/GeneralUserGS.sf3';
+                
+                showMessage('Loading high-quality SoundFont...', 'info');
+                
+                const response = await fetch(soundFontUrl);
+                const soundFontBuffer = await response.arrayBuffer();
+                
+                // Initialize SpessaSynth
+                spessaSynth = new SpessaSynth.Synthesizer(audioContext.destination, soundFontBuffer);
+                
+                // Set to a guitar-focused program (Acoustic Guitar)
+                spessaSynth.controllerChange(0, 0, 0); // Bank select
+                spessaSynth.programChange(0, 25); // Acoustic Guitar Steel
+                
+                soundFontLoaded = true;
+                showMessage('Professional SoundFont loaded successfully!', 'success');
+                
+                // Show SoundFont controls
+                document.getElementById('soundfont-controls').classList.remove('hidden');
+                
+                return true;
+            } catch (error) {
+                console.error('Error initializing SpessaSynth:', error);
+                showMessage('Failed to load professional audio. Falling back to basic synthesis.', 'error');
+                useSpessaSynth = false;
+                return false;
+            }
+        }
+        
+        function switchSoundFont(instrumentType) {
+            if (!spessaSynth) return;
+            
+            const instruments = {
+                'default': 25, // Acoustic Guitar Steel
+                'acoustic': 25, // Acoustic Guitar Steel
+                'electric': 27, // Electric Guitar Clean
+                'nylon': 24   // Acoustic Guitar Nylon
+            };
+            
+            const program = instruments[instrumentType] || 25;
+            spessaSynth.programChange(0, program);
+            showMessage(`Switched to ${instrumentType} guitar sound`, 'success');
+        }
+        
+        // --- AlphaTab Functions ---
+        
+        async function initializeAlphaTab() {
+            try {
+                if (alphaTabInitialized) return true;
+                
+                showMessage('Initializing professional tablature rendering...', 'info');
+                
+                // Initialize AlphaTab with configuration
+                const alphaTabContainer = document.getElementById('alphaTab');
+                
+                const settings = {
+                    file: null, // We'll set this dynamically
+                    player: {
+                        enablePlayer: true,
+                        enableUserInteraction: true,
+                        enableElementHighlighting: true,
+                        soundFont: null // We'll use our SpessaSynth instead
+                    },
+                    display: {
+                        layoutMode: 'horizontal',
+                        staveProfile: 'tab',
+                        scale: 0.8,
+                        stretchForce: 0.8
+                    }
+                };
+                
+                alphaTabApi = new alphaTab.AlphaTabApi(alphaTabContainer, settings);
+                
+                // Listen to AlphaTab events
+                alphaTabApi.scoreLoaded.on(() => {
+                    showMessage('Professional tablature loaded successfully!', 'success');
+                });
+                
+                alphaTabApi.renderFinished.on(() => {
+                    // Show the AlphaTab container and hide loading
+                    document.getElementById('alphaTab-container').classList.remove('hidden');
+                    document.getElementById('loading-indicator').classList.add('hidden');
+                    document.getElementById('legacy-tab-container').classList.add('hidden');
+                });
+                
+                alphaTabApi.error.on((error) => {
+                    console.error('AlphaTab error:', error);
+                    // Fallback to ASCII tabs
+                    useAlphaTab = false;
+                    document.getElementById('alphaTab-container').classList.add('hidden');
+                    document.getElementById('legacy-tab-container').classList.remove('hidden');
+                    showMessage('Falling back to ASCII tablature due to rendering error', 'error');
+                });
+                
+                alphaTabInitialized = true;
+                return true;
+            } catch (error) {
+                console.error('Error initializing AlphaTab:', error);
+                useAlphaTab = false;
+                showMessage('Professional tablature not available. Using ASCII fallback.', 'error');
+                return false;
+            }
+        }
+        
+        function convertMidiToAlphaTex(midi) {
+            try {
+                // Extract notes from MIDI
+                let notes = [];
+                midi.tracks.forEach(track => {
+                    if (track.channel !== 9) { // Skip drum tracks
+                        track.notes.forEach(note => {
+                            notes.push({
+                                time: note.time,
+                                midi: note.midi,
+                                duration: note.duration,
+                                velocity: note.velocity
+                            });
+                        });
+                    }
+                });
+                
+                if (notes.length === 0) return null;
+                
+                // Sort notes by time
+                notes.sort((a, b) => a.time - b.time);
+                
+                // Convert MIDI notes to guitar fret positions
+                const guitarNotes = notes.map(note => {
+                    const fretInfo = findBestFret(note.midi, null);
+                    if (!fretInfo) return null;
+                    
+                    return {
+                        time: note.time,
+                        fret: fretInfo.fret,
+                        string: fretInfo.string + 1, // AlphaTab uses 1-indexed strings
+                        duration: note.duration
+                    };
+                }).filter(note => note !== null);
+                
+                // Generate AlphaTex format
+                const tempoEvents = midi.header.tempos;
+                const bpm = (tempoEvents.length ? tempoEvents[0].bpm : 120);
+                
+                let alphaTex = `\\title "MIDI Guitar Tab"
+\\tempo ${Math.round(bpm)}
+\\track "Guitar"
+\\staff{tab} \\instrument 25 \\tuning E4 B3 G3 D3 A2 E2
+\\voice
+`;
+                
+                // Group notes by time to create measures
+                const timeStep = 0.25; // Quarter note resolution
+                const maxTime = Math.max(...guitarNotes.map(n => n.time));
+                let currentTime = 0;
+                let measureLength = 0;
+                
+                while (currentTime <= maxTime) {
+                    const notesAtTime = guitarNotes.filter(n => 
+                        Math.abs(n.time - currentTime) < timeStep / 2
+                    );
+                    
+                    if (notesAtTime.length > 0) {
+                        if (notesAtTime.length === 1) {
+                            const note = notesAtTime[0];
+                            alphaTex += `${note.fret}.${note.string}.4 `;
+                        } else {
+                            // Chord notation
+                            const chord = notesAtTime.map(n => `${n.fret}.${n.string}`).join(' ');
+                            alphaTex += `(${chord}).4 `;
+                        }
+                    } else {
+                        alphaTex += 'r.4 '; // Rest
+                    }
+                    
+                    measureLength += 0.25;
+                    if (measureLength >= 1.0) {
+                        alphaTex += '| ';
+                        measureLength = 0;
+                    }
+                    
+                    currentTime += timeStep;
+                }
+                
+                return alphaTex;
+            } catch (error) {
+                console.error('Error converting MIDI to AlphaTex:', error);
+                return null;
+            }
+        }
+        
+        async function setupProfessionalTablature(midi) {
+            try {
+                document.getElementById('loading-indicator').classList.remove('hidden');
+                
+                // Convert MIDI to AlphaTex format
+                const alphaTex = convertMidiToAlphaTex(midi);
+                
+                if (!alphaTex) {
+                    throw new Error('Could not convert MIDI to AlphaTex format');
+                }
+                
+                // Load the AlphaTex into AlphaTab
+                alphaTabApi.tex(alphaTex);
+                
+                // Show controls and hide loading
+                tabOutput.classList.remove('hidden');
+                playerControls.classList.remove('hidden');
+                
+                showMessage('Professional tablature loaded successfully!', 'success');
+                
+            } catch (error) {
+                console.error('Error setting up professional tablature:', error);
+                showMessage('Failed to render professional tablature. Falling back to ASCII.', 'error');
+                
+                // Fallback to ASCII tabs
+                useAlphaTab = false;
+                await setupLegacyTablature(midi);
+            }
+        }
+        
+        async function setupLegacyTablature(midi) {
+            try {
+                const tab = generateTab(midi);
+                
+                if (tab.trim() === getEmptyTab().trim()) {
+                    showMessage('Could not find any playable notes in the MIDI file.', 'error');
+                    return;
+                }
+                
+                // Show ASCII tablature
+                tabDisplay.textContent = tab;
+                document.getElementById('legacy-tab-container').classList.remove('hidden');
+                document.getElementById('alphaTab-container').classList.add('hidden');
+                document.getElementById('loading-indicator').classList.add('hidden');
+                
+                tabOutput.classList.remove('hidden');
+                playerControls.classList.remove('hidden');
+                
+                // Measure character width AFTER tab is displayed
+                measureCharacterWidth();
+                createPositionMapping();
+                
+                showMessage('ASCII tablature generated successfully!', 'success');
+                
+            } catch (error) {
+                console.error('Error setting up legacy tablature:', error);
+                showMessage('Error generating tablature.', 'error');
+            }
+        }
 
         // --- Event Listeners ---
 
@@ -116,25 +454,30 @@
                     try {
                         currentMidi = new Midi(e.target.result);
                         
+                        // Initialize modern synthesis first
+                        if (useSpessaSynth && !soundFontLoaded) {
+                            await initializeSpessaSynth();
+                        }
+                        
+                        // Initialize professional tablature rendering
+                        if (useAlphaTab && !alphaTabInitialized) {
+                            await initializeAlphaTab();
+                        }
+                        
                         // Calculate dynamic timeStep from MIDI's actual tempo
                         const tempoEvents = currentMidi.header.tempos;
                         const bpm = (tempoEvents.length ? tempoEvents[0].bpm : 120);
                         const secondsPerBeat = 60 / bpm;
                         dynamicTimeStep = secondsPerBeat / 4; // 16th-note slices
                         
-                        setupPlayer(currentMidi);
-                        const tab = generateTab(currentMidi);
+                        await setupPlayer(currentMidi);
                         
-                        if (tab.trim() === getEmptyTab().trim()) {
-                           showMessage('Could not find any playable notes in the MIDI file.', 'error');
+                        // Try professional tablature first
+                        if (useAlphaTab && alphaTabApi) {
+                            await setupProfessionalTablature(currentMidi);
                         } else {
-                            tabDisplay.textContent = tab;
-                            tabOutput.classList.remove('hidden');
-                            playerControls.classList.remove('hidden');
-                            // Measure character width AFTER tab is displayed
-                            measureCharacterWidth();
-                            createPositionMapping();
-                            showMessage('Tab generated successfully! Ready to play.', 'success');
+                            // Fallback to ASCII tablature
+                            await setupLegacyTablature(currentMidi);
                         }
                     } catch (error) {
                         console.error("Error parsing MIDI file:", error);
@@ -151,61 +494,161 @@
         playBtn.addEventListener('click', async () => {
             if (!currentMidi) return;
 
-            if (Tone.context.state !== 'running') {
-                await Tone.start();
-            }
+            try {
+                if (useSpessaSynth && spessaSynth) {
+                    // Use SpessaSynth player
+                    if (audioContext && audioContext.state === 'suspended') {
+                        await audioContext.resume();
+                    }
+                    
+                    if (isPlaying) {
+                        // Stop playback
+                        isPlaying = false;
+                        window.stopSpessaSynthNotes();
+                        playBtn.textContent = 'Play';
+                        playBtn.classList.replace('bg-yellow-600', 'bg-green-600');
+                        playBtn.classList.replace('hover:bg-yellow-700', 'hover:bg-green-700');
+                        playhead.classList.add('hidden');
+                        playhead.style.transform = `translateX(${TAB_LEFT_PADDING * actualCharWidth}px)`;
+                        tabDisplay.scrollLeft = 0;
+                    } else {
+                        // Start playback
+                        isPlaying = true;
+                        window.playSpessaSynthNotes();
+                        playBtn.textContent = 'Pause';
+                        playBtn.classList.replace('bg-green-600', 'bg-yellow-600');
+                        playBtn.classList.replace('hover:bg-green-700', 'hover:bg-yellow-700');
+                        playhead.classList.remove('hidden');
+                        playhead.style.transform = `translateX(${TAB_LEFT_PADDING * actualCharWidth}px)`;
+                        requestAnimationFrame(animatePlayhead);
+                    }
+                } else {
+                    // Fallback to Tone.js player
+                    if (Tone.context.state !== 'running') {
+                        await Tone.start();
+                    }
 
-            if (isPlaying) {
-                Tone.Transport.pause();
-                isPlaying = false;
-                playBtn.textContent = 'Play';
-                playBtn.classList.replace('bg-yellow-600', 'bg-green-600');
-                playBtn.classList.replace('hover:bg-yellow-700', 'hover:bg-green-700');
-            } else {
-                Tone.Transport.start();
-                isPlaying = true;
-                playBtn.textContent = 'Pause';
-                playBtn.classList.replace('bg-green-600', 'bg-yellow-600');
-                playBtn.classList.replace('hover:bg-green-700', 'hover:bg-yellow-700');
-                playhead.classList.remove('hidden');
-                // Reset playhead to start position
-                playhead.style.transform = `translateX(${TAB_LEFT_PADDING * actualCharWidth}px)`;
-                requestAnimationFrame(animatePlayhead);
+                    if (isPlaying) {
+                        Tone.Transport.pause();
+                        isPlaying = false;
+                        playBtn.textContent = 'Play';
+                        playBtn.classList.replace('bg-yellow-600', 'bg-green-600');
+                        playBtn.classList.replace('hover:bg-yellow-700', 'hover:bg-green-700');
+                    } else {
+                        Tone.Transport.start();
+                        isPlaying = true;
+                        playBtn.textContent = 'Pause';
+                        playBtn.classList.replace('bg-green-600', 'bg-yellow-600');
+                        playBtn.classList.replace('hover:bg-green-700', 'hover:bg-yellow-700');
+                        playhead.classList.remove('hidden');
+                        playhead.style.transform = `translateX(${TAB_LEFT_PADDING * actualCharWidth}px)`;
+                        requestAnimationFrame(animatePlayhead);
+                    }
+                }
+            } catch (error) {
+                console.error('Error during playback:', error);
+                showMessage('Error during playback. Please try again.', 'error');
             }
         });
 
         stopBtn.addEventListener('click', () => {
-            if (currentMidi) {
+            if (!currentMidi) return;
+            
+            if (useSpessaSynth && spessaSynth) {
+                // Stop SpessaSynth playback
+                isPlaying = false;
+                window.stopSpessaSynthNotes();
+                playBtn.textContent = 'Play';
+                playBtn.classList.replace('bg-yellow-600', 'bg-green-600');
+                playBtn.classList.replace('hover:bg-yellow-700', 'hover:bg-green-700');
+                playhead.classList.add('hidden');
+                playhead.style.transform = `translateX(${TAB_LEFT_PADDING * actualCharWidth}px)`;
+                tabDisplay.scrollLeft = 0;
+            } else {
+                // Stop Tone.js playback
                 Tone.Transport.stop();
+            }
+        });
+        
+        // SoundFont selection event listener
+        document.getElementById('soundfont-select').addEventListener('change', (event) => {
+            if (spessaSynth && soundFontLoaded) {
+                switchSoundFont(event.target.value);
+            }
+        });
+        
+        // Volume control
+        document.getElementById('volume-slider').addEventListener('input', (event) => {
+            const volume = parseInt(event.target.value) / 100;
+            
+            if (spessaSynth) {
+                // SpessaSynth volume control (channel volume)
+                spessaSynth.controllerChange(0, 7, Math.floor(volume * 127));
+            }
+            
+            if (synth) {
+                // Tone.js volume control
+                synth.volume.value = 20 * Math.log10(volume || 0.001); // Convert to dB
             }
         });
         
         // --- Core Functions ---
 
         function resetState() {
+            // Stop any current playback
             if (isPlaying) {
-                Tone.Transport.stop();
+                if (useSpessaSynth && spessaSynth) {
+                    window.stopSpessaSynthNotes();
+                } else {
+                    Tone.Transport.stop();
+                }
             }
+            
+            // Clean up Tone.js state
             Tone.Transport.cancel(0);
             Tone.Transport.position = 0;
             if(synth) {
                 synth.dispose();
                 synth = null;
             }
-            // Dispose of the old part if it exists
             if (currentPart) {
                 currentPart.dispose();
                 currentPart = null;
             }
             
+            // Clean up SpessaSynth state
+            if (spessaSynth) {
+                // Stop all notes
+                for (let i = 0; i < 128; i++) {
+                    spessaSynth.noteOff(0, i);
+                }
+            }
+            
+            // Clean up AlphaTab state
+            if (alphaTabApi) {
+                // Stop any AlphaTab playback
+                try {
+                    alphaTabApi.stop();
+                } catch (e) {
+                    // Ignore errors on stop
+                }
+            }
+            
+            // Reset application state
             isPlaying = false;
             currentMidi = null;
             timeToPositionMap.clear();
             actualCharWidth = 0;
             dynamicTimeStep = 0.125;
             window.tabTimeSteps = [];
+            window.currentNotes = [];
+            
+            // Reset UI state
             tabOutput.classList.add('hidden');
             playerControls.classList.add('hidden');
+            document.getElementById('alphaTab-container').classList.add('hidden');
+            document.getElementById('legacy-tab-container').classList.add('hidden');
+            document.getElementById('loading-indicator').classList.add('hidden');
             playBtn.textContent = 'Play';
             playBtn.classList.replace('bg-yellow-600', 'bg-green-600');
             playBtn.classList.replace('hover:bg-yellow-700', 'hover:bg-green-700');
@@ -252,25 +695,99 @@
             }
         }
 
-        // --- REWORKED PLAYER SETUP ---
-        function setupPlayer(midi) {
+        // --- MODERN PLAYER SETUP ---
+        async function setupPlayer(midi) {
+            try {
+                // Prepare MIDI data for both synthesis methods
+                const notes = [];
+                midi.tracks.forEach(track => {
+                    if (track.channel !== 9) { // Skip drum tracks
+                        track.notes.forEach(note => {
+                            notes.push({
+                                time: note.time,
+                                name: note.name,
+                                midi: note.midi,
+                                duration: note.duration,
+                                velocity: note.velocity || 0.8
+                            });
+                        });
+                    }
+                });
+
+                if (useSpessaSynth && spessaSynth) {
+                    // Use modern SpessaSynth for high-quality audio
+                    setupSpessaSynthPlayer(notes);
+                    showMessage('Using professional SoundFont synthesis', 'success');
+                } else {
+                    // Fallback to Tone.js
+                    setupToneJSPlayer(notes);
+                    showMessage('Using basic synthesis (SpessaSynth not available)', 'info');
+                }
+                
+            } catch (error) {
+                console.error('Error setting up player:', error);
+                showMessage('Error setting up audio player', 'error');
+            }
+        }
+        
+        function setupSpessaSynthPlayer(notes) {
+            // Store notes for SpessaSynth playback
+            window.currentNotes = notes;
+            
+            // We'll use a custom scheduler for SpessaSynth
+            let scheduledEvents = [];
+            let startTime = 0;
+            let isScheduled = false;
+            
+            window.playSpessaSynthNotes = () => {
+                if (!spessaSynth || !audioContext) return;
+                
+                startTime = audioContext.currentTime;
+                isScheduled = true;
+                
+                // Clear any existing scheduled events
+                scheduledEvents.forEach(event => clearTimeout(event));
+                scheduledEvents = [];
+                
+                // Schedule all notes
+                notes.forEach(note => {
+                    const timeout = setTimeout(() => {
+                        if (isPlaying && spessaSynth) {
+                            // Play note using SpessaSynth
+                            spessaSynth.noteOn(0, note.midi, Math.floor(note.velocity * 127));
+                            
+                            // Schedule note off
+                            setTimeout(() => {
+                                if (spessaSynth) {
+                                    spessaSynth.noteOff(0, note.midi);
+                                }
+                            }, note.duration * 1000);
+                        }
+                    }, note.time * 1000);
+                    
+                    scheduledEvents.push(timeout);
+                });
+            };
+            
+            window.stopSpessaSynthNotes = () => {
+                isScheduled = false;
+                scheduledEvents.forEach(event => clearTimeout(event));
+                scheduledEvents = [];
+                
+                // Stop all playing notes
+                if (spessaSynth) {
+                    for (let i = 0; i < 128; i++) {
+                        spessaSynth.noteOff(0, i);
+                    }
+                }
+            };
+        }
+        
+        function setupToneJSPlayer(notes) {
+            // Fallback to original Tone.js implementation
             synth = new Tone.PolySynth(Tone.Synth, {
                 envelope: { attack: 0.01, decay: 0.4, sustain: 0.2, release: 1.4 }
             }).toDestination();
-
-            const notes = [];
-            midi.tracks.forEach(track => {
-                if (track.channel !== 9) {
-                    track.notes.forEach(note => {
-                        notes.push({
-                            time: note.time,
-                            name: note.name,
-                            duration: note.duration,
-                            velocity: note.velocity
-                        });
-                    });
-                }
-            });
 
             // Create a Tone.Part to schedule all notes
             currentPart = new Tone.Part((time, value) => {
