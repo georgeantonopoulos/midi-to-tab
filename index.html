@@ -17,15 +17,16 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>Professional MIDI → Guitar Tab</title>
 
-  <!-- Tailwind (CDN) → tiny runtime, purge-safe -->
-  <!-- Note: For production, install Tailwind via PostCSS or CLI instead of CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="tailwind.css" rel="stylesheet" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
   <!-- Core libraries (latest stable) -->
   <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi"></script>
   <script src="https://cdn.jsdelivr.net/npm/tone@14.8.39/build/Tone.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/gh/spessasus/SpessaSynth@latest/dist/spessasynth.min.js"></script>
+  <script type="module">
+    import * as SpessaSynth from "./spessasynth/local_main.js";
+    window.SpessaSynth = SpessaSynth;
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab/dist/alphaTab.min.js"></script>
 
   <style>
@@ -192,7 +193,7 @@
         enablePlayer: false
       }
     });
-    alphaApi.renderFinished.on(()=>{hide(spinner); show(alphaWrap);} );
+      alphaApi.renderFinished.on(()=>{hide(spinner);});
     alphaApi.error.on((error)=>{ 
       console.error("AlphaTab Error:", error); 
       flash("AlphaTab failed → ASCII fallback","error"); 
@@ -247,14 +248,13 @@
     Audio players
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━*/
   async function setupTone(notes){
-    // Ensure Tone.js AudioContext is started (requires user gesture)
-    if (Tone.context.state !== 'running') {
-      await Tone.start();
-    }
     polySynth = new Tone.PolySynth(Tone.Synth).toDestination();
     tonePart = new Tone.Part((t,v)=>polySynth.triggerAttackRelease(v.note,v.dur,t,v.vel),notes).start(0);
   }
-  function play(){ if(isPlaying){ pause(); return; } isPlaying=true; playBtn.textContent='Pause'; show(playhead);
+  async function play(){ if(isPlaying){ pause(); return; }
+    if(useSpessa){ if(audioCtx && audioCtx.state==='suspended') await audioCtx.resume(); }
+    else { if(Tone.context.state!=='running') await Tone.start(); }
+    isPlaying=true; playBtn.textContent='Pause'; show(playhead);
     if(useSpessa) playSpessa(); else Tone.Transport.start(); requestAnimationFrame(moveHead); }
   function pause(){ isPlaying=false; playBtn.textContent='Play'; hide(playhead); if(useSpessa) stopSpessa(); else Tone.Transport.pause(); }
   function stop(){ pause(); if(!useSpessa) Tone.Transport.stop(); asciiPre.scrollLeft=0; playhead.style.transform='translateX(0)'; }
@@ -269,7 +269,7 @@
     UI hooks
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━*/
   fileInput.onchange = async e=>{
-    const file=e.target.files[0]; if(!file) return; reset(); show(spinner); statusTxt.textContent='Processing MIDI…';
+    const file=e.target.files[0]; if(!file) return; reset(); show(tabArea); show(alphaWrap); show(spinner); statusTxt.textContent='Processing MIDI…';
     const arr=await file.arrayBuffer(); midiData = new Midi(arr);
     timeStep = (60/(midiData.header.tempos[0]?.bpm||120))/4;
     if(await initSpessa()) { 
@@ -294,7 +294,7 @@
     const ascii = asciiTab(midiData);
     if(!alphaTex || !ascii){ flash('No playable notes','error'); return; }
     asciiPre.textContent=ascii; charW = measureChar();
-    hide(spinner); show(tabArea); show(player);
+    hide(spinner); show(player);
   };
 
   playBtn.onclick = play; stopBtn.onclick = stop;
