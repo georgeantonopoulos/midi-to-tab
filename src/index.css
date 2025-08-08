@@ -1,0 +1,31 @@
+/* Minimal reset and utility-friendly base */
+html, body, #root {
+  height: 100%;
+}
+body {
+  margin: 0;
+}
+/* Wider content area */
+.container-wide {
+  max-width: 1200px;
+}
+
+/* App theming */
+:root {
+  --card-bg: rgba(255,255,255,0.04);
+  --card-border: rgba(255,255,255,0.08);
+}
+
+* { box-sizing: border-box; }
+
+.glass-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  backdrop-filter: blur(6px);
+}
+
+.panel-title {
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
